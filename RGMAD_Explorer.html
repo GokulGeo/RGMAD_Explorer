@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RGMAD - Mosaic and Footprint Explorer</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Esri Leaflet -->
+    <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
+
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f8f9fa;
+        }
+
+        /* --- Top Header Strip --- */
+        #app-header {
+            height: 70px;
+            background-color: #ffffff;
+            color: #333;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 2000;
+            flex-shrink: 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        /* Logo Styling */
+        .embedded-logo {
+            height: 55px; 
+            width: auto;
+            display: flex;
+            align-items: center;
+            margin-right: 20px;
+        }
+        
+        .embedded-logo svg {
+            height: 100%;
+            width: auto;
+            display: block;
+        }
+
+        /* Title Text Styling */
+        .header-text-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            width: max-content; 
+        }
+
+        .header-title {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 700; 
+            color: #2c3e50;
+            line-height: 1.1;
+            text-decoration: none; 
+            letter-spacing: 1px;
+            border-bottom: 3px solid #2c3e50;
+            width: 100%; 
+            padding-bottom: 2px;
+            margin-bottom: 3px;
+        }
+
+        .header-subtitle {
+            margin: 0;
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- Resizable Layout --- */
+        #content-wrapper {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #map-container {
+            position: relative;
+            width: 100%;
+            min-height: 100px;
+            flex-grow: 1; 
+        }
+
+        #map { 
+            position: absolute; 
+            top: 0; 
+            bottom: 0; 
+            right: 0; 
+            left: 0; 
+        }
+
+        /* Resize Handle */
+        #resize-handle {
+            height: 8px;
+            background-color: #e2e8f0;
+            cursor: row-resize;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+            z-index: 1500;
+        }
+        #resize-handle:hover, #resize-handle.dragging {
+            background-color: #3b82f6;
+        }
+        #resize-handle::after {
+            content: "";
+            width: 40px;
+            height: 4px;
+            border-top: 1px solid #94a3b8;
+            border-bottom: 1px solid #94a3b8;
+            display: block;
+        }
+
+        #table-container {
+            width: 100%;
+            height: 300px; 
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            min-height: 100px;
+            flex-shrink: 0;
+        }
+        
+        /* Floating Control Panel */
+        .info-panel {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            background: white;
+            padding: 0;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            width: 300px; 
+            max-width: 90%;
+            display: flex;
+            flex-direction: column;
+            max-height: 90%;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .info-panel.minimized {
+            width: auto;
+            overflow: hidden;
+            height: auto;
+        }
+        
+        .info-panel.minimized .panel-section, 
+        .info-panel.minimized .search-container,
+        .info-panel.minimized #btn-reset {
+            display: none !important;
+        }
+        
+        .info-panel.minimized .panel-header {
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        
+        .info-panel.minimized .minimize-btn {
+            transform: rotate(180deg);
+        }
+
+        .panel-header {
+            background-color: #f8fafc; 
+            color: #333;
+            padding: 12px 15px;
+            border-radius: 8px 8px 0 0;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .header-text h2 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: #334155;
+        }
+
+        .minimize-btn {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 0 0 0 10px;
+            transition: transform 0.3s;
+        }
+
+        .panel-section {
+            padding: 15px;
+            border-bottom: 1px solid #f1f5f9;
+            flex-shrink: 0;
+        }
+        
+        /* Search Box Styles */
+        .search-container {
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .search-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 2000;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        .result-item {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            font-size: 13px;
+            color: #475569;
+        }
+        .result-item:hover { background-color: #f0f9ff; color: #0284c7; }
+        .result-item.no-result { cursor: default; color: #94a3b8; font-style: italic; }
+        .result-item:last-child { border-bottom: none; }
+
+        /* Controls */
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #64748b;
+            font-weight: 700;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: #334155;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .toggle-switch input {
+            margin-right: 8px;
+            transform: scale(1.1);
+            accent-color: #2563eb;
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin-top: 5px;
+            cursor: pointer;
+            accent-color: #2563eb;
+        }
+
+        /* Buttons */
+        .btn-reset {
+            display: none;
+            width: 100%;
+            padding: 8px;
+            background-color: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            font-size: 12px;
+        }
+        .btn-reset:hover { background-color: #dc2626; }
+
+        .popup-btn {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            margin-top: 10px;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .popup-btn:hover { background-color: #1d4ed8; }
+
+        /* Basemap Selector */
+        .basemap-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .basemap-btn {
+            flex: 1;
+            padding: 6px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 6px;
+            text-align: center;
+            color: #475569;
+            transition: all 0.2s;
+        }
+        .basemap-btn:hover { background-color: #f8fafc; }
+        .basemap-btn.active {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border-color: #3b82f6;
+            font-weight: 600;
+        }
+
+        /* Loading Indicator */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2000;
+            background: rgba(255,255,255,0.95);
+            padding: 15px 30px;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            display: none;
+            font-weight: 600;
+            color: #334155;
+            font-size: 14px;
+            pointer-events: none;
+            border: 1px solid #f1f5f9;
+        }
+
+        .popup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .popup-table td { padding: 4px; border-bottom: 1px solid #eee; }
+
+        /* --- Attribute Table Styles --- */
+        .table-header {
+            padding: 10px 15px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            height: 45px;
+            box-sizing: border-box;
+        }
+        .table-header h3 { margin: 0; font-size: 13px; font-weight: 700; color: #334155; }
+        
+        .table-content {
+            flex: 1;
+            overflow: auto;
+        }
+
+        table.attr-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        table.attr-table th {
+            position: sticky;
+            top: 0;
+            background: #f1f5f9;
+            color: #475569;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid #cbd5e1;
+            z-index: 10;
+        }
+
+        table.attr-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f1f5f9;
+            color: #334155;
+        }
+
+        table.attr-table tr:hover {
+            background-color: #f8fafc;
+            cursor: pointer;
+        }
+
+        table.attr-table tr.active-row {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .load-more-btn {
+            background: white;
+            border: 1px solid #cbd5e1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            color: #475569;
+            transition: all 0.2s;
+        }
+        .load-more-btn:hover { background: #f1f5f9; color: #1e293b; }
+
+    </style>
+</head>
+<body>
+
+    <!-- TOP TITLE HEADER -->
+    <header id="app-header">
+        <!-- Self-contained SVG Logo -->
+        <div class="embedded-logo">
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Circle Background with custom fill #452f55 -->
+                <circle cx="50" cy="50" r="45" fill="#452f55"/>
+                
+                <!-- Bottom Layer (Green - Terrain) -->
+                <path d="M25 60 L50 72 L75 60 L50 48 Z" fill="#4CAF50" stroke="#fff" stroke-width="1"/>
+                <path d="M25 60 L50 72 L50 75 L25 63 Z" fill="#388E3C"/>
+                <path d="M50 72 L75 60 L75 63 L50 75 Z" fill="#2E7D32"/>
+
+                <!-- Middle Layer (Blue - Water/Features) -->
+                <path d="M25 50 L50 62 L75 50 L50 38 Z" fill="#2196F3" stroke="#fff" stroke-width="1"/>
+                <path d="M25 50 L50 62 L50 64 L25 52 Z" fill="#1976D2"/>
+                <path d="M50 62 L75 50 L75 52 L50 64 Z" fill="#1565C0"/>
+
+                <!-- Top Layer (Yellow/Orange - Data) -->
+                <path d="M25 40 L50 52 L75 40 L50 28 Z" fill="#FFC107" stroke="#fff" stroke-width="1"/>
+                <path d="M25 40 L50 52 L50 54 L25 42 Z" fill="#FFA000"/>
+                <path d="M50 52 L75 40 L75 42 L50 54 Z" fill="#FF8F00"/>
+            </svg>
+        </div>
+        
+        <!-- Text Container -->
+        <div class="header-text-container">
+            <h1 class="header-title">RGMAD</h1>
+            <h2 class="header-subtitle">Mosaic and Footprint Explorer</h2>
+        </div>
+    </header>
+
+    <!-- Content Wrapper for Resizable Logic -->
+    <div id="content-wrapper">
+        <!-- Map Container -->
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="loading">Processing...</div>
+
+            <!-- Floating Control Panel -->
+            <div class="info-panel" id="main-panel">
+                <div class="panel-header" onclick="togglePanel()">
+                    <div class="header-text">
+                        <h2>Map Controls & Layers</h2>
+                    </div>
+                    <button class="minimize-btn" id="min-btn">▼</button>
+                </div>
+
+                <!-- SEARCH SECTION -->
+                <div class="panel-section">
+                    <span class="section-title">Search Map Sheets</span>
+                    <div class="search-container">
+                        <input type="text" id="search-input" class="search-input" placeholder="e.g. 17932-l1" autocomplete="off">
+                        <div id="search-results" class="search-results"></div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button id="btn-reset" class="btn-reset">✖ Clear Filter</button>
+                    </div>
+                </div>
+
+                <!-- LAYERS SECTION -->
+                <div class="panel-section">
+                    <span class="section-title">Base Map</span>
+                    <div class="basemap-selector">
+                        <button class="basemap-btn active" onclick="setBasemap('Gray', this)">Gray</button>
+                        <button class="basemap-btn" onclick="setBasemap('Imagery', this)">Satellite</button>
+                        <button class="basemap-btn" onclick="setBasemap('Streets', this)">Streets</button>
+                    </div>
+
+                    <span class="section-title">Layers & Visibility</span>
+                    
+                    <div class="control-row">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="footprints-toggle" checked>
+                            <span>Footprints (Index)</span>
+                        </label>
+                        <span style="font-size: 11px; color: #2563eb;">Blue Outline</span>
+                    </div>
+
+                    <div class="control-row" style="margin-top: 10px;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="layer-toggle" checked>
+                            <span>Geology Image</span>
+                        </label>
+                        <span style="font-size: 11px;" id="opacity-label">80% Opacity</span>
+                    </div>
+                    
+                    <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="0.8">
+                </div>
+
+                <div class="panel-section" style="background-color: #f8fafc; font-size: 11px; color: #64748b; border: none; border-radius: 0 0 8px 8px;">
+                    Start typing above or click the map to identify a sheet.
+                </div>
+            </div>
+        </div>
+
+        <!-- Resizable Handle -->
+        <div id="resize-handle" title="Drag to resize"></div>
+
+        <!-- Attribute Table Container -->
+        <div id="table-container">
+            <div class="table-header">
+                <h3>Attribute Table (Index Layer) <span id="table-count" style="font-weight:normal; font-size: 0.9em; color: #64748b; margin-left: 10px;"></span></h3>
+                <button class="load-more-btn" onclick="loadAttributes()">Reload All</button>
+            </div>
+            <div class="table-content">
+                <table class="attr-table" id="attribute-table">
+                    <thead id="table-head">
+                        <!-- Headers will be injected via JS now -->
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Rows injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Map Initialization ---
+        const map = L.map('map').setView([-41.2, 173], 6);
+
+        // --- 2. Base Maps Setup ---
+        const basemaps = {
+            Gray: L.esri.basemapLayer('Gray'),
+            Imagery: L.esri.basemapLayer('Imagery'),
+            Streets: L.esri.basemapLayer('Streets')
+        };
+        
+        let currentBasemap = basemaps.Gray;
+        currentBasemap.addTo(map);
+        
+        const imageryLabels = L.esri.basemapLayer('ImageryLabels');
+
+        window.setBasemap = function(type, btnElement) {
+            document.querySelectorAll('.basemap-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            if (map.hasLayer(currentBasemap)) map.removeLayer(currentBasemap);
+            if (map.hasLayer(imageryLabels)) map.removeLayer(imageryLabels);
+
+            currentBasemap = basemaps[type];
+            map.addLayer(currentBasemap);
+
+            if (type === 'Imagery') {
+                map.addLayer(imageryLabels);
+            }
+            
+            if (map.hasLayer(footprintsLayer)) footprintsLayer.bringToFront();
+            if (map.hasLayer(geologyLayer)) geologyLayer.bringToFront();
+        };
+
+        // --- 3. Service URLs ---
+        const urls = {
+            image: 'https://gis.gns.cri.nz/server/rest/services/geology/rgmad_mosaic/ImageServer',
+            footprints: 'https://gis.gns.cri.nz/server/rest/services/geology/rgmad_footprints/MapServer'
+        };
+
+        // --- 4. Layers ---
+        const footprintsLayer = L.esri.dynamicMapLayer({
+            url: urls.footprints,
+            opacity: 1, 
+            layers: [0], 
+            useCors: false
+        }).addTo(map);
+        
+        const geologyLayer = L.esri.imageMapLayer({
+            url: urls.image,
+            opacity: 0.8,
+            attribution: 'GNS Science'
+        }).addTo(map);
+
+        // --- 5. Loading Indicators ---
+        const loadingDiv = document.getElementById('loading');
+        const showLoading = (msg) => { loadingDiv.textContent = msg || 'Loading...'; loadingDiv.style.display = 'block'; };
+        const hideLoading = () => { loadingDiv.style.display = 'none'; };
+
+        geologyLayer.on('loading', () => showLoading('Loading Geology...'));
+        geologyLayer.on('load', hideLoading);
+        footprintsLayer.on('loading', () => showLoading('Loading Footprints...'));
+        footprintsLayer.on('load', hideLoading);
+
+        // --- 6. UI Controls ---
+        const slider = document.getElementById('opacity-slider');
+        const opacityLabel = document.getElementById('opacity-label');
+        slider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            geologyLayer.setOpacity(val);
+            opacityLabel.textContent = Math.round(val * 100) + '% Opacity';
+        });
+
+        document.getElementById('layer-toggle').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(geologyLayer); else map.removeLayer(geologyLayer);
+        });
+
+        document.getElementById('footprints-toggle').addEventListener('change', (e) => {
+            if (e.target.checked) map.addLayer(footprintsLayer); else map.removeLayer(footprintsLayer);
+        });
+
+        const panel = document.getElementById('main-panel');
+        window.togglePanel = function() {
+            panel.classList.toggle('minimized');
+        };
+
+        const resetBtn = document.getElementById('btn-reset');
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+
+        resetBtn.addEventListener('click', () => {
+            showLoading('Clearing filters...');
+            geologyLayer.setMosaicRule(null);
+            footprintsLayer.setLayerDefs({});
+            
+            resetBtn.style.display = 'none';
+            searchInput.value = '';
+            searchResults.style.display = 'none';
+            map.closePopup();
+            
+            // Clear table selection
+            document.querySelectorAll('#table-body tr').forEach(r => r.classList.remove('active-row'));
+            
+            setTimeout(hideLoading, 500);
+        });
+
+        // --- 7. Core Selection Logic ---
+        function selectAndIsolate(name, feature) {
+            if (!name) return;
+            showLoading(`Isolating ${name}...`);
+            resetBtn.style.display = 'block';
+            searchResults.style.display = 'none';
+            searchInput.value = name;
+
+            // Highlight in Table
+            const rows = document.querySelectorAll('#table-body tr');
+            rows.forEach(row => {
+                if (row.dataset.name === name) {
+                    row.classList.add('active-row');
+                    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    row.classList.remove('active-row');
+                }
+            });
+
+            // Zoom
+            if (feature) {
+                const geoJsonLayer = L.geoJSON(feature);
+                const bounds = geoJsonLayer.getBounds();
+                if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
+            }
+
+            // Filter
+            const cleanName = name.trim();
+            const sqlSafeName = cleanName.replace(/'/g, "''");
+            footprintsLayer.setLayerDefs({ 0: `Name = '${sqlSafeName}'` });
+            geologyLayer.setMosaicRule({ where: `Name = '${sqlSafeName}'` });
+        }
+
+        // --- 8. Search Implementation ---
+        const footprintsQuery = L.esri.query({ url: urls.footprints + '/0' });
+
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        const performSearch = debounce((text) => {
+            if (!text || text.length < 2) {
+                searchResults.style.display = 'none';
+                return;
+            }
+
+            // --- IMPROVED CLIENT-SIDE SEARCH ---
+            // If data is loaded in the table, filter it here first!
+            // This is instant, Case-Insensitive, and guaranteed to match what is visible.
+            if (allLoadedFeatures.length > 0) {
+                const lowerText = text.toLowerCase();
+                const filtered = allLoadedFeatures.filter(f => {
+                    const n = f.properties.Name || '';
+                    return n.toLowerCase().includes(lowerText);
+                }).slice(0, 10); // Limit results to 10 for dropdown
+                
+                renderSearchResults({ features: filtered });
+                return;
+            }
+
+            // Fallback to Server Search if table isn't loaded yet
+            const sqlSafeText = text.replace(/'/g, "''");
+            footprintsQuery
+                .where(`Name LIKE '%${sqlSafeText}%'`) 
+                .returnGeometry(true)
+                .limit(10)
+                .run((error, featureCollection) => {
+                    if (error) { console.error(error); return; }
+                    renderSearchResults(featureCollection);
+                });
+        }, 300);
+
+        function renderSearchResults(featureCollection) {
+            searchResults.innerHTML = '';
+            searchResults.style.display = 'block';
+            
+            // Check features array safely
+            const features = featureCollection.features || [];
+
+            if (features.length === 0) {
+                const div = document.createElement('div');
+                div.className = 'result-item no-result';
+                div.textContent = "No map sheets found matching that name.";
+                searchResults.appendChild(div);
+                return;
+            }
+
+            features.forEach(feature => {
+                const props = feature.properties;
+                const name = props.Name || "Unknown Map";
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.textContent = name;
+                div.addEventListener('click', () => selectAndIsolate(name, feature));
+                searchResults.appendChild(div);
+            });
+        }
+
+        searchInput.addEventListener('input', (e) => performSearch(e.target.value));
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) searchResults.style.display = 'none';
+        });
+
+        // --- 9. Map Click Interaction ---
+        map.on('click', function(e) {
+            if (!map.hasLayer(footprintsLayer)) return;
+            showLoading('Identifying...');
+            footprintsLayer.identify().at(e.latlng).layers('visible:0').run(function(error, featureCollection) {
+                hideLoading();
+                if (error || featureCollection.features.length === 0) return;
+
+                const feature = featureCollection.features[0];
+                const props = feature.properties;
+                window.lastClickedFeature = feature;
+
+                // Also highlight in table if exists
+                if (props.Name) {
+                    const rows = document.querySelectorAll('#table-body tr');
+                    rows.forEach(r => r.classList.remove('active-row'));
+                    const targetRow = Array.from(rows).find(r => r.dataset.name === props.Name);
+                    if (targetRow) {
+                        targetRow.classList.add('active-row');
+                        targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
+
+                const popupContent = `
+                    <div style="min-width: 200px;">
+                        <h4 style="margin:0 0 5px 0;">${props.Name}</h4>
+                        <table class="popup-table">
+                            <tr><td>Year:</td><td>${props.Year || ''}</td></tr>
+                            <tr><td>Scale:</td><td>${props.Scale || ''}</td></tr>
+                        </table>
+                        <button class="popup-btn" onclick="selectFromPopup()">Isolate & Zoom</button>
+                    </div>
+                `;
+                L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+            });
+        });
+
+        window.selectFromPopup = function() {
+            if (window.lastClickedFeature) {
+                const props = window.lastClickedFeature.properties;
+                selectAndIsolate(props.Name, window.lastClickedFeature);
+                map.closePopup();
+            }
+        };
+
+        // --- 10. Attribute Table Logic (Pagination & Sorting) ---
+        
+        let isFetching = false;
+        let tableHeadersGenerated = false;
+        let totalRecordsLoaded = 0;
+        let allLoadedFeatures = []; 
+
+        function loadAttributes() {
+            if (isFetching) return;
+            isFetching = true;
+            
+            const tbody = document.getElementById('table-body');
+            const thead = document.getElementById('table-head');
+            const countSpan = document.getElementById('table-count');
+            const BATCH_SIZE = 1000; 
+            
+            tbody.innerHTML = '';
+            thead.innerHTML = '';
+            tableHeadersGenerated = false;
+            totalRecordsLoaded = 0;
+            allLoadedFeatures = []; 
+            
+            countSpan.textContent = '(Starting fetch...)';
+            
+            function fetchBatch(offset) {
+                countSpan.textContent = `(Fetching records ${offset} to ${offset + BATCH_SIZE}...)`;
+
+                footprintsQuery
+                    .where("1=1")
+                    .orderBy('Name', 'ASC') 
+                    .limit(BATCH_SIZE)
+                    .offset(offset)
+                    .returnGeometry(true) 
+                    .run((error, featureCollection) => {
+                        if (error) {
+                            console.error("Fetch error", error);
+                            isFetching = false;
+                            countSpan.textContent = `(Error: ${error.message} - Loaded ${totalRecordsLoaded})`;
+                            
+                            if (totalRecordsLoaded === 0) {
+                                tbody.innerHTML = '<tr><td colspan="100%" style="color:red; text-align:center; padding:20px;">Error loading data.</td></tr>';
+                            }
+                            return;
+                        }
+
+                        const batchCount = featureCollection.features.length;
+                        
+                        if (batchCount === 0) {
+                            finalizeLoading();
+                            return;
+                        }
+
+                        allLoadedFeatures = allLoadedFeatures.concat(featureCollection.features);
+                        totalRecordsLoaded += batchCount;
+
+                        if (!tableHeadersGenerated && batchCount > 0) {
+                            generateTableHeaders(featureCollection.features[0]);
+                        }
+
+                        renderBatch(featureCollection.features);
+
+                        if (batchCount === BATCH_SIZE) {
+                            fetchBatch(offset + BATCH_SIZE);
+                        } else {
+                            finalizeLoading();
+                        }
+                    });
+            }
+            fetchBatch(0);
+        }
+
+        function generateTableHeaders(feature) {
+            const thead = document.getElementById('table-head');
+            const fields = Object.keys(feature.properties);
+            
+            const headerRow = document.createElement('tr');
+            fields.forEach(field => {
+                const th = document.createElement('th');
+                th.textContent = field;
+                th.style.whiteSpace = 'nowrap'; 
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            tableHeadersGenerated = true;
+        }
+
+        function renderBatch(features) {
+            const tbody = document.getElementById('table-body');
+            const fragment = document.createDocumentFragment();
+            const fields = Object.keys(features[0].properties);
+
+            features.forEach(feature => {
+                const tr = createRow(feature, fields);
+                fragment.appendChild(tr);
+            });
+            
+            tbody.appendChild(fragment);
+        }
+
+        function createRow(feature, fields) {
+            const p = feature.properties;
+            const tr = document.createElement('tr');
+            const name = p.Name || '';
+            tr.dataset.name = name;
+
+            fields.forEach(field => {
+                const td = document.createElement('td');
+                let val = p[field];
+                
+                if (val === null || val === undefined) {
+                    val = '';
+                } else if (typeof val === 'object') {
+                    val = JSON.stringify(val); 
+                }
+                
+                td.textContent = val;
+                td.style.whiteSpace = 'nowrap'; 
+                tr.appendChild(td);
+            });
+            
+            tr.addEventListener('click', () => {
+                selectAndIsolate(name, feature);
+            });
+            
+            return tr;
+        }
+
+        function finalizeLoading() {
+            isFetching = false;
+            const countSpan = document.getElementById('table-count');
+            countSpan.textContent = `(Sorting ${totalRecordsLoaded} records...)`;
+            
+            const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
+            allLoadedFeatures.sort((a, b) => {
+                const nameA = a.properties.Name || '';
+                const nameB = b.properties.Name || '';
+                return collator.compare(nameA, nameB);
+            });
+
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            
+            if (allLoadedFeatures.length > 0) {
+                 const fields = Object.keys(allLoadedFeatures[0].properties);
+                 let i = 0;
+                 const chunk = 500;
+                 function renderChunk() {
+                     const fragment = document.createDocumentFragment();
+                     const limit = Math.min(i + chunk, allLoadedFeatures.length);
+                     for (; i < limit; i++) {
+                         fragment.appendChild(createRow(allLoadedFeatures[i], fields));
+                     }
+                     tbody.appendChild(fragment);
+                     
+                     if (i < allLoadedFeatures.length) {
+                         requestAnimationFrame(renderChunk);
+                         countSpan.textContent = `(Rendering sorted table ${i}/${totalRecordsLoaded}...)`;
+                     } else {
+                         countSpan.textContent = `(${totalRecordsLoaded} total records loaded)`;
+                     }
+                 }
+                 renderChunk();
+            } else {
+                 countSpan.textContent = `(0 records loaded)`;
+            }
+        }
+
+        loadAttributes();
+
+        // --- 11. Resizable Logic ---
+        const handle = document.getElementById('resize-handle');
+        const mapContainer = document.getElementById('map-container');
+        const tableContainer = document.getElementById('table-container');
+        const contentWrapper = document.getElementById('content-wrapper');
+
+        let isDragging = false;
+
+        handle.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            handle.classList.add('dragging');
+            document.body.style.cursor = 'row-resize';
+            // Disable text selection during drag
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isDragging) return;
+
+            // Calculate new height based on mouse Y position relative to content wrapper
+            const wrapperRect = contentWrapper.getBoundingClientRect();
+            let newMapHeight = e.clientY - wrapperRect.top;
+            
+            // Constrain heights
+            const minHeight = 100;
+            const maxMapHeight = wrapperRect.height - minHeight - handle.offsetHeight;
+            
+            if (newMapHeight < minHeight) newMapHeight = minHeight;
+            if (newMapHeight > maxMapHeight) newMapHeight = maxMapHeight;
+            
+            const newTableHeight = wrapperRect.height - newMapHeight - handle.offsetHeight;
+
+            // Apply heights using flex-grow: 0 and specific heights
+            mapContainer.style.flexGrow = '0';
+            mapContainer.style.height = newMapHeight + 'px';
+            
+            tableContainer.style.height = newTableHeight + 'px';
+            
+            // Invalidate leaflet map size to prevent gray areas
+            map.invalidateSize();
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (isDragging) {
+                isDragging = false;
+                handle.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                map.invalidateSize(); // Final resize check
+            }
+        });
+
+    </script>
+</body>
+</html>
