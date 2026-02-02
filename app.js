@@ -633,11 +633,19 @@ function renderVisibleFeatures() {
     const excludeFields = [
         'OBJECTID', 'MinPS', 'MaxPS', 'LowPS', 'HighPS', 
         'Category', 'CenterX', 'CenterY', 'ZOrder', 'TypeID', 
-        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length'
+        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length',
+        'Name', 'Tag', 'GroupName', 'ProductName', 'TILES', 'MAP', 'TIF'
     ];
     
     // Filter out excluded fields
-    const fields = allFields.filter(field => !excludeFields.includes(field));
+    let fields = allFields.filter(field => !excludeFields.includes(field));
+    
+    // Move LYR to the end if it exists
+    const lyrIndex = fields.indexOf('LYR');
+    if (lyrIndex > -1) {
+        fields.splice(lyrIndex, 1);
+        fields.push('LYR');
+    }
     
     // Deduplicate by base name (group -l1, -l2, -l3, -l4 together)
     const baseNameMap = new Map();
@@ -730,11 +738,19 @@ function generateTableHeaders(feature) {
     const excludeFields = [
         'OBJECTID', 'MinPS', 'MaxPS', 'LowPS', 'HighPS', 
         'Category', 'CenterX', 'CenterY', 'ZOrder', 'TypeID', 
-        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length'
+        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length',
+        'Name', 'Tag', 'GroupName', 'ProductName', 'TILES', 'MAP', 'TIF'
     ];
     
     // Filter out excluded fields
-    const fields = allFields.filter(field => !excludeFields.includes(field));
+    let fields = allFields.filter(field => !excludeFields.includes(field));
+    
+    // Move LYR to the end if it exists
+    const lyrIndex = fields.indexOf('LYR');
+    if (lyrIndex > -1) {
+        fields.splice(lyrIndex, 1);
+        fields.push('LYR');
+    }
     
     const headerRow = document.createElement('tr');
     fields.forEach(field => {
@@ -771,11 +787,19 @@ function renderBatch(features) {
     const excludeFields = [
         'OBJECTID', 'MinPS', 'MaxPS', 'LowPS', 'HighPS', 
         'Category', 'CenterX', 'CenterY', 'ZOrder', 'TypeID', 
-        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length'
+        'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length',
+        'Name', 'Tag', 'GroupName', 'ProductName', 'TILES', 'MAP', 'TIF'
     ];
     
     // Filter out excluded fields
-    const fields = allFields.filter(field => !excludeFields.includes(field));
+    let fields = allFields.filter(field => !excludeFields.includes(field));
+    
+    // Move LYR to the end if it exists
+    const lyrIndex = fields.indexOf('LYR');
+    if (lyrIndex > -1) {
+        fields.splice(lyrIndex, 1);
+        fields.push('LYR');
+    }
 
     features.forEach(feature => {
         const tr = createRow(feature, fields);
@@ -918,9 +942,17 @@ function finalizeLoading() {
          const excludeFields = [
              'OBJECTID', 'MinPS', 'MaxPS', 'LowPS', 'HighPS', 
              'Category', 'CenterX', 'CenterY', 'ZOrder', 'TypeID', 
-             'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length'
+             'ItemTS', 'UriHash', 'Shape_Leng', 'Shape_Area', 'Shape_Length',
+             'Name', 'Tag', 'GroupName', 'ProductName', 'TILES', 'MAP', 'TIF'
          ];
-         const fields = allFields.filter(field => !excludeFields.includes(field));
+         let fields = allFields.filter(field => !excludeFields.includes(field));
+         
+         // Move LYR to the end if it exists
+         const lyrIndex = fields.indexOf('LYR');
+         if (lyrIndex > -1) {
+             fields.splice(lyrIndex, 1);
+             fields.push('LYR');
+         }
          
          let i = 0;
          const chunk = 500;
