@@ -11,11 +11,12 @@ body {
 
 /* --- Top Header Strip --- */
 #app-header {
-    height: 70px;
+    height: 80px;
     background-color: #ffffff;
     color: #333;
     display: flex;
     align-items: center;
+    gap: 14px;
     padding: 0 20px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     z-index: 2000;
@@ -25,14 +26,15 @@ body {
 
 /* Logo Styling */
 .embedded-logo {
-    height: 55px; 
+    height: 66px;
     width: auto;
     display: flex;
     align-items: center;
-    margin-right: 20px;
+    flex-shrink: 0;
+    margin-right: 0;
 }
 
-.embedded-logo svg {
+.embedded-logo img {
     height: 100%;
     width: auto;
     display: block;
@@ -43,7 +45,9 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    width: max-content; 
+    align-items: flex-start;
+    width: max-content;
+    min-width: 0;
 }
 
 .header-title {
@@ -55,7 +59,8 @@ body {
     text-decoration: none; 
     letter-spacing: 1px;
     border-bottom: 3px solid #2c3e50;
-    width: 100%; 
+    display: block;
+    width: 100%;
     padding-bottom: 2px;
     margin-bottom: 3px;
 }
@@ -67,6 +72,7 @@ body {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 /* --- Resizable Layout --- */
@@ -1000,6 +1006,12 @@ table.attr-table tr.active-row {
     #app-header {
         padding: 0 10px;
         height: 60px;
+        gap: 10px;
+    }
+
+    .embedded-logo {
+        height: 44px;
+        margin-right: 0;
     }
     
     .header-title {

@@ -612,57 +612,62 @@ function generateTableHeaders(feature) {
         th.textContent = field;
         th.setAttribute('data-field', field);
         th.style.userSelect = 'none';
-        th.title = 'Click to sort';
-        
-        // Add sort indicator
-        const sortIndicator = document.createElement('span');
-        sortIndicator.style.marginLeft = '5px';
-        sortIndicator.style.fontSize = '10px';
-        sortIndicator.style.color = '#94a3b8';
-        sortIndicator.textContent = '⇅';
-        th.appendChild(sortIndicator);
-        
-        // Add click event for sorting with drag detection
-        let mouseDownX = 0;
-        let mouseDownY = 0;
-        let isDragging = false;
-        
-        th.addEventListener('mousedown', (e) => {
-            mouseDownX = e.clientX;
-            mouseDownY = e.clientY;
-            isDragging = false;
-        });
-        
-        th.addEventListener('mousemove', (e) => {
-            if (mouseDownX !== 0) {
-                const moveX = Math.abs(e.clientX - mouseDownX);
-                const moveY = Math.abs(e.clientY - mouseDownY);
-                if (moveX > 5 || moveY > 5) {
-                    isDragging = true;
+        if (field !== 'LYR') {
+            th.title = 'Click to sort';
+
+            // Add sort indicator
+            const sortIndicator = document.createElement('span');
+            sortIndicator.style.marginLeft = '5px';
+            sortIndicator.style.fontSize = '10px';
+            sortIndicator.style.color = '#94a3b8';
+            sortIndicator.textContent = '⇅';
+            th.appendChild(sortIndicator);
+
+            // Add click event for sorting with drag detection
+            let mouseDownX = 0;
+            let mouseDownY = 0;
+            let isDragging = false;
+
+            th.addEventListener('mousedown', (e) => {
+                mouseDownX = e.clientX;
+                mouseDownY = e.clientY;
+                isDragging = false;
+            });
+
+            th.addEventListener('mousemove', (e) => {
+                if (mouseDownX !== 0) {
+                    const moveX = Math.abs(e.clientX - mouseDownX);
+                    const moveY = Math.abs(e.clientY - mouseDownY);
+                    if (moveX > 5 || moveY > 5) {
+                        isDragging = true;
+                    }
                 }
-            }
-            
-            // Update cursor based on position
-            const rect = th.getBoundingClientRect();
-            const edgeThreshold = 5;
-            const isNearRightEdge = (e.clientX - rect.left) > (rect.width - edgeThreshold);
-            th.style.cursor = isNearRightEdge ? 'col-resize' : 'pointer';
-        });
-        
-        th.addEventListener('mouseup', (e) => {
-            // Only sort if not dragging and not clicking on the resize edge
-            const rect = th.getBoundingClientRect();
-            const edgeThreshold = 5; // pixels from edge
-            const isNearRightEdge = (e.clientX - rect.left) > (rect.width - edgeThreshold);
-            
-            if (!isDragging && !isNearRightEdge) {
-                sortTable(field, th);
-            }
-            
-            mouseDownX = 0;
-            mouseDownY = 0;
-            isDragging = false;
-        });
+
+                // Update cursor based on position
+                const rect = th.getBoundingClientRect();
+                const edgeThreshold = 5;
+                const isNearRightEdge = (e.clientX - rect.left) > (rect.width - edgeThreshold);
+                th.style.cursor = isNearRightEdge ? 'col-resize' : 'pointer';
+            });
+
+            th.addEventListener('mouseup', (e) => {
+                // Only sort if not dragging and not clicking on the resize edge
+                const rect = th.getBoundingClientRect();
+                const edgeThreshold = 5; // pixels from edge
+                const isNearRightEdge = (e.clientX - rect.left) > (rect.width - edgeThreshold);
+
+                if (!isDragging && !isNearRightEdge) {
+                    sortTable(field, th);
+                }
+
+                mouseDownX = 0;
+                mouseDownY = 0;
+                isDragging = false;
+            });
+        } else {
+            th.title = 'Layer file download';
+            th.style.cursor = 'default';
+        }
         
         headerRow.appendChild(th);
 
