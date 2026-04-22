@@ -212,6 +212,23 @@ function getBaseName(name) {
     return name.replace(/-l[1-4]$/i, '');
 }
 
+function escapeSql(value) {
+    return String(value).replace(/'/g, "''");
+}
+
+// Build geology filter to include all tile levels for each selected sheet base name.
+function buildGeologyWhereForSheetNames(sheetNames) {
+    const baseNames = Array.from(new Set(sheetNames.map(getBaseName).filter(Boolean)));
+    if (baseNames.length === 0) return '1=0';
+    return baseNames.map(base => `Name LIKE '${escapeSql(base)}-l%'`).join(' OR ');
+}
+
+function applyGeologyMosaic(whereClause) {
+    const rule = { mosaicMethod: 'esriMosaicClosestToCenter' };
+    if (whereClause) rule.where = whereClause;
+    geologyLayer.setMosaicRule(rule);
+}
+
 // Store currently selected feature for zoom button
 let currentlySelectedFeature = null;
 let currentlySelectedName = null;
@@ -444,10 +461,7 @@ function loadVisibleFeatures() {
                     
                     // Filter both footprints and geology layers
                     footprintsLayer.setLayerDefs({ 0: `(${nameConditions})` });
-                    geologyLayer.setMosaicRule({
-                        mosaicMethod: 'esriMosaicLockRaster',
-                        where: `(${nameConditions})`
-                    });
+                    applyGeologyMosaic(`(${buildGeologyWhereForSheetNames(visibleNames)})`);
                 }
             }
         });
@@ -1196,10 +1210,10 @@ function refreshMosaicFromVisibility() {
             const names = Array.from(selectedRows);
             const whereClause = names.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
             const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
-            geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicLockRaster', where: fullClause });
+            applyGeologyMosaic(buildGeologyWhereForSheetNames(names));
             footprintsLayer.setLayerDefs({ 0: fullClause });
         } else {
-            geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicClosestToCenter' });
+            applyGeologyMosaic();
             footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
         }
         return;
@@ -1211,17 +1225,20 @@ function refreshMosaicFromVisibility() {
     if (filteredBySelection && selectedRows.size > 0) {
         const visibleNames = Array.from(selectedRows).filter(n => !hiddenSheets.has(n));
         if (visibleNames.length === 0) {
-            geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicLockRaster', where: "1=0" });
+            applyGeologyMosaic('1=0');
             footprintsLayer.setLayerDefs({ 0: "1=0" });
         } else {
             const whereClause = visibleNames.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
             const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
-            geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicLockRaster', where: fullClause });
+            applyGeologyMosaic(buildGeologyWhereForSheetNames(visibleNames));
             footprintsLayer.setLayerDefs({ 0: fullClause });
         }
     } else {
         const fullClause = `(${hiddenClause}) AND Name LIKE '%-l4'`;
-        geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicLockRaster', where: fullClause });
+        const hiddenBaseClause = Array.from(new Set(Array.from(hiddenSheets).map(getBaseName).filter(Boolean)))
+            .map(base => `Name NOT LIKE '${escapeSql(base)}-l%'`)
+            .join(' AND ');
+        applyGeologyMosaic(hiddenBaseClause || null);
         footprintsLayer.setLayerDefs({ 0: fullClause });
     }
 }
@@ -1251,13 +1268,10 @@ if (filterSelectedBtn) {
             const whereClause = visibleNames.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
             const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
             footprintsLayer.setLayerDefs({ 0: fullClause });
-            geologyLayer.setMosaicRule({
-                mosaicMethod: 'esriMosaicLockRaster',
-                where: fullClause
-            });
+            applyGeologyMosaic(buildGeologyWhereForSheetNames(visibleNames));
         } else {
             footprintsLayer.setLayerDefs({ 0: "1=0" });
-            geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicLockRaster', where: "1=0" });
+            applyGeologyMosaic('1=0');
         }
         
         // Update count
@@ -1294,9 +1308,7 @@ if (clearFilterSelectedBtn) {
         
         // Reset footprints and geology layers
         footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
-        geologyLayer.setMosaicRule({
-            mosaicMethod: 'esriMosaicClosestToCenter'
-        });
+        applyGeologyMosaic();
         
         // Clear selections
         selectedRows.clear();

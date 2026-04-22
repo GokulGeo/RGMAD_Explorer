@@ -26,8 +26,8 @@ body {
 
 /* Logo Styling */
 .embedded-logo {
-    height: 52px;
-    width: 160px;
+    height: 60px;
+    width: 185px;
     display: flex;
     align-items: center;
     flex-shrink: 0;
@@ -1023,8 +1023,8 @@ table.attr-table tr.active-row {
     }
 
     .embedded-logo {
-        height: 40px;
-        width: 120px;
+        height: 46px;
+        width: 140px;
         margin-right: 0;
     }
     
