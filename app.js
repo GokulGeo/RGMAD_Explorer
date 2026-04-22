@@ -3,8 +3,8 @@ const map = L.map('map', {
     zoomControl: false // We'll add custom position
 }).setView([-41.2, 173], 6);
 
-// Add zoom control to top-right
-L.control.zoom({ position: 'topright' }).addTo(map);
+// Add zoom control under the custom map action buttons on the top-left
+L.control.zoom({ position: 'topleft' }).addTo(map);
 
 // Add scale control
 L.control.scale({
@@ -201,9 +201,26 @@ document.getElementById('footprints-toggle').addEventListener('change', (e) => {
 });
 
 const panel = document.getElementById('main-panel');
+const minimizePanelBtn = document.getElementById('minimize-panel');
+const panelHeader = panel ? panel.querySelector('.panel-header') : null;
 window.togglePanel = function() {
     panel.classList.toggle('minimized');
 };
+
+if (minimizePanelBtn) {
+    minimizePanelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.togglePanel();
+    });
+}
+
+if (panelHeader) {
+    panelHeader.addEventListener('click', (e) => {
+        // Keep button click behavior isolated; otherwise allow header click to toggle.
+        if (e.target.closest('#minimize-panel')) return;
+        window.togglePanel();
+    });
+}
 
 // --- 7. Core Selection Logic ---
 // Helper function to strip tile level suffix (e.g., "17834-l3" -> "17834")
