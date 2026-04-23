@@ -287,8 +287,19 @@ function applySelectionMosaic() {
         }
     }
 
-    // Footprints always show all sheets
-    footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+    // Footprints: filter to selected sheets only when Filter Selected is active
+    if (filteredBySelection && selectedRows.size > 0) {
+        const visibleNames = Array.from(selectedRows).filter(n => !hiddenSheets.has(n));
+        if (visibleNames.length > 0) {
+            const fpClause = Array.from(new Set(visibleNames.map(getBaseName).filter(Boolean)))
+                .map(b => `Name LIKE '${escapeSql(b)}-l4'`).join(' OR ');
+            footprintsLayer.setLayerDefs({ 0: fpClause });
+        } else {
+            footprintsLayer.setLayerDefs({ 0: "1=0" });
+        }
+    } else {
+        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+    }
 }
 
 // Store currently selected feature for zoom button
@@ -1332,16 +1343,8 @@ if (filterSelectedBtn) {
         });
         
         // Update footprints and geology layers to show only selected (and visible) features
-        const visibleNames = Array.from(selectedRows).filter(n => !hiddenSheets.has(n));
-        if (visibleNames.length > 0) {
-            const whereClause = visibleNames.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
-            const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
-            footprintsLayer.setLayerDefs({ 0: fullClause });
-            applyGeologyMosaic(buildGeologyWhereForSheetNames(visibleNames));
-        } else {
-            footprintsLayer.setLayerDefs({ 0: "1=0" });
-            applyGeologyMosaic('1=0');
-        }
+        // applySelectionMosaic handles both imagery and footprints now that filteredBySelection=true
+        applySelectionMosaic();
         
         // Update count
         const countSpan = document.getElementById('table-count');
@@ -1374,23 +1377,35 @@ if (clearFilterSelectedBtn) {
         
         // Reset hidden sheets
         hiddenSheets.clear();
-        
-        // Reset footprints and geology layers
-        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
-        applyGeologyMosaic();
-        
+
+        // Clear active highlight
+        activeHighlightName = null;
+        currentlySelectedFeature = null;
+        currentlySelectedName = null;
+        rows.forEach(row => row.classList.remove('active-row'));
+
         // Clear selections
         selectedRows.clear();
         rows.forEach(row => {
             const checkbox = row.querySelector('.row-checkbox');
             if (checkbox) checkbox.checked = false;
         });
-        
+
         const selectAllCheckbox = document.getElementById('select-all-checkbox');
         if (selectAllCheckbox) {
             selectAllCheckbox.checked = false;
             selectAllCheckbox.indeterminate = false;
         }
+
+        // Hide imagery — nothing is selected, back to default state
+        if (map.hasLayer(geologyLayer)) {
+            map.removeLayer(geologyLayer);
+        }
+        const layerToggle = document.getElementById('layer-toggle');
+        if (layerToggle) layerToggle.checked = false;
+
+        // Reset footprints to show all sheets
+        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
         
         // Update count
         const countSpan = document.getElementById('table-count');
