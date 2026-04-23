@@ -101,7 +101,7 @@ const geologyLayer = L.esri.imageMapLayer({
     format: 'jpgpng',
     compression: 75,
     maxZoom: 18
-}).addTo(map);
+}); // Off by default — enabled on first sheet selection or manual toggle
 
 // Set mosaic rule to let server choose appropriate tile level based on scale
 // This allows all L1-L4 tiles to be visible, with the server selecting the best one
@@ -246,6 +246,51 @@ function applyGeologyMosaic(whereClause) {
     geologyLayer.setMosaicRule(rule);
 }
 
+// Single highlighted row name (from row click, not checkbox)
+let activeHighlightName = null;
+
+// Central function: decide what imagery to show based on current highlight + checkboxes.
+// Footprints are always kept showing all sheets.
+function applySelectionMosaic() {
+    const checkedCount = selectedRows.size;
+
+    if (checkedCount > 1) {
+        // Multiple checkboxed → show imagery for all checked sheets
+        if (!map.hasLayer(geologyLayer)) {
+            map.addLayer(geologyLayer);
+            const toggle = document.getElementById('layer-toggle');
+            if (toggle) toggle.checked = true;
+        }
+        applyGeologyMosaic(buildGeologyWhereForSheetNames(Array.from(selectedRows)));
+    } else if (checkedCount === 1) {
+        // Exactly one checkbox ticked → show that sheet
+        if (!map.hasLayer(geologyLayer)) {
+            map.addLayer(geologyLayer);
+            const toggle = document.getElementById('layer-toggle');
+            if (toggle) toggle.checked = true;
+        }
+        applyGeologyMosaic(buildGeologyWhereForSheetNames(Array.from(selectedRows)));
+    } else if (activeHighlightName) {
+        // No checkboxes, but a row is highlighted → show that sheet
+        if (!map.hasLayer(geologyLayer)) {
+            map.addLayer(geologyLayer);
+            const toggle = document.getElementById('layer-toggle');
+            if (toggle) toggle.checked = true;
+        }
+        applyGeologyMosaic(buildGeologyWhereForSheetNames([activeHighlightName]));
+    } else {
+        // Nothing selected → hide imagery
+        if (map.hasLayer(geologyLayer)) {
+            map.removeLayer(geologyLayer);
+            const toggle = document.getElementById('layer-toggle');
+            if (toggle) toggle.checked = false;
+        }
+    }
+
+    // Footprints always show all sheets
+    footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+}
+
 // Store currently selected feature for zoom button
 let currentlySelectedFeature = null;
 let currentlySelectedName = null;
@@ -257,6 +302,10 @@ function selectAndIsolate(name, feature, autoZoom = false) {
     // Store the selected feature and name
     currentlySelectedFeature = feature;
     currentlySelectedName = name;
+
+    // Track the highlighted row and update imagery accordingly
+    activeHighlightName = name;
+    applySelectionMosaic();
 
     // Highlight in Table - match by base name
     const rows = document.querySelectorAll('#table-body tr');
@@ -1175,7 +1224,10 @@ function handleRowCheckboxChange(name, isChecked) {
     } else {
         selectedRows.delete(name);
     }
-    
+
+    // Update imagery based on new selection state
+    applySelectionMosaic();
+
     // Update select all checkbox state
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
     const tbody = document.getElementById('table-body');
