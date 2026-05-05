@@ -89,10 +89,45 @@ const footprintsLayer = L.esri.dynamicMapLayer({
     maxZoom: 18
 }).addTo(map);
 
-// Filter to show only -l4 tiles (one per map sheet)
-footprintsLayer.setLayerDefs({
-    0: "Name LIKE '%-l4'"
+// Zoom-aware footprint filter: at low zoom show all tile levels, at high zoom only -l4
+function getDefaultFootprintsFilter() {
+    const zoom = map.getZoom();
+    if (zoom <= 7) {
+        return "Name LIKE '%-l%'";
+    }
+    return "Name LIKE '%-l4'";
+}
+
+// Apply initial footprints filter
+footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
+
+// Update default footprints filter on zoom change (only when no override is active)
+map.on('zoomend', function() {
+    if (!filteredBySelection && !currentTableFilter && !extentFilterEnabled) {
+        footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
+    }
 });
+
+// Highlight layer for checkbox-selected footprints (outline only)
+const highlightLayer = L.geoJSON(null, {
+    style: {
+        color: '#2563eb',
+        weight: 3,
+        opacity: 1,
+        fill: false
+    }
+}).addTo(map);
+
+// Active row highlight layer (single click — filled)
+const activeHighlightLayer = L.geoJSON(null, {
+    style: {
+        color: '#2563eb',
+        weight: 3,
+        opacity: 1,
+        fillColor: '#bfdbfe',
+        fillOpacity: 0.4
+    }
+}).addTo(map);
 
 const geologyLayer = L.esri.imageMapLayer({
     url: urls.image,
@@ -197,7 +232,15 @@ document.getElementById('layer-toggle').addEventListener('change', (e) => {
 });
 
 document.getElementById('footprints-toggle').addEventListener('change', (e) => {
-    if (e.target.checked) map.addLayer(footprintsLayer); else map.removeLayer(footprintsLayer);
+    if (e.target.checked) {
+        map.addLayer(footprintsLayer);
+        if (selectedRows.size > 0) map.addLayer(highlightLayer);
+        if (activeHighlightName) map.addLayer(activeHighlightLayer);
+    } else {
+        map.removeLayer(footprintsLayer);
+        map.removeLayer(highlightLayer);
+        map.removeLayer(activeHighlightLayer);
+    }
 });
 
 const panel = document.getElementById('main-panel');
@@ -233,6 +276,37 @@ function escapeSql(value) {
     return String(value).replace(/'/g, "''");
 }
 
+// --- Footprint highlight for checked rows ---
+let highlightUpdateTimeout;
+function scheduleHighlightUpdate() {
+    clearTimeout(highlightUpdateTimeout);
+    highlightUpdateTimeout = setTimeout(updateHighlightLayer, 350);
+}
+
+function updateHighlightLayer() {
+    highlightLayer.clearLayers();
+    const footprintsVisible = document.getElementById('footprints-toggle')?.checked !== false;
+    if (selectedRows.size === 0 || !footprintsVisible) {
+        if (map.hasLayer(highlightLayer)) map.removeLayer(highlightLayer);
+        return;
+    }
+
+    if (!map.hasLayer(highlightLayer)) map.addLayer(highlightLayer);
+
+    const baseNames = Array.from(new Set(Array.from(selectedRows).map(getBaseName).filter(Boolean)));
+    const whereClause = baseNames.map(b => `Name LIKE '${escapeSql(b)}-l%'`).join(' OR ');
+
+    L.esri.query({ url: urls.footprints + '/0' })
+        .where(whereClause)
+        .returnGeometry(true)
+        .fields(['Name'])
+        .run((error, featureCollection) => {
+            if (error || !featureCollection) return;
+            highlightLayer.clearLayers();
+            highlightLayer.addData(featureCollection);
+        });
+}
+
 // Build geology filter to include all tile levels for each selected sheet base name.
 function buildGeologyWhereForSheetNames(sheetNames) {
     const baseNames = Array.from(new Set(sheetNames.map(getBaseName).filter(Boolean)));
@@ -254,16 +328,26 @@ let activeHighlightName = null;
 function applySelectionMosaic() {
     const checkedCount = selectedRows.size;
 
-    if (checkedCount > 1) {
-        // Multiple checkboxed → show imagery for all checked sheets
-        if (!map.hasLayer(geologyLayer)) {
-            map.addLayer(geologyLayer);
-            const toggle = document.getElementById('layer-toggle');
-            if (toggle) toggle.checked = true;
+    if (filteredBySelection && checkedCount > 0) {
+        // Filter Selected mode: show imagery only for the actively clicked row,
+        // so the user can navigate sheet by sheet. All selected footprints stay visible.
+        if (activeHighlightName) {
+            if (!map.hasLayer(geologyLayer)) {
+                map.addLayer(geologyLayer);
+                const toggle = document.getElementById('layer-toggle');
+                if (toggle) toggle.checked = true;
+            }
+            applyGeologyMosaic(buildGeologyWhereForSheetNames([activeHighlightName]));
+        } else {
+            // Nothing clicked yet — hide imagery until user picks a row
+            if (map.hasLayer(geologyLayer)) {
+                map.removeLayer(geologyLayer);
+                const toggle = document.getElementById('layer-toggle');
+                if (toggle) toggle.checked = false;
+            }
         }
-        applyGeologyMosaic(buildGeologyWhereForSheetNames(Array.from(selectedRows)));
-    } else if (checkedCount === 1) {
-        // Exactly one checkbox ticked → show that sheet
+    } else if (checkedCount > 0) {
+        // Checkboxes ticked but not in filter mode → show all checked sheets
         if (!map.hasLayer(geologyLayer)) {
             map.addLayer(geologyLayer);
             const toggle = document.getElementById('layer-toggle');
@@ -292,13 +376,14 @@ function applySelectionMosaic() {
         const visibleNames = Array.from(selectedRows).filter(n => !hiddenSheets.has(n));
         if (visibleNames.length > 0) {
             const fpClause = Array.from(new Set(visibleNames.map(getBaseName).filter(Boolean)))
-                .map(b => `Name LIKE '${escapeSql(b)}-l4'`).join(' OR ');
+                .map(b => `Name LIKE '${escapeSql(b)}-l%'`)
+                .join(' OR ');
             footprintsLayer.setLayerDefs({ 0: fpClause });
         } else {
             footprintsLayer.setLayerDefs({ 0: "1=0" });
         }
     } else {
-        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+        footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
     }
 }
 
@@ -317,6 +402,26 @@ function selectAndIsolate(name, feature, autoZoom = false) {
     // Track the highlighted row and update imagery accordingly
     activeHighlightName = name;
     applySelectionMosaic();
+
+    // Draw filled highlight for the active row
+    activeHighlightLayer.clearLayers();
+    const footprintsOn = document.getElementById('footprints-toggle')?.checked !== false;
+    if (footprintsOn) {
+        if (!map.hasLayer(activeHighlightLayer)) map.addLayer(activeHighlightLayer);
+        if (feature && feature.geometry) {
+            activeHighlightLayer.addData(feature);
+        } else {
+            L.esri.query({ url: urls.footprints + '/0' })
+                .where(`Name LIKE '${escapeSql(baseName)}-l%'`)
+                .returnGeometry(true)
+                .fields(['Name'])
+                .run((error, fc) => {
+                    if (!error && fc && fc.features.length > 0) {
+                        activeHighlightLayer.addData(fc);
+                    }
+                });
+        }
+    }
 
     // Highlight in Table - match by base name
     const rows = document.querySelectorAll('#table-body tr');
@@ -495,7 +600,7 @@ function loadVisibleFeatures() {
                 thead.innerHTML = '';
                 tableHeadersGenerated = false;
                 // Clear map filters when no features in view
-                footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+                footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
                 geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicClosestToCenter' });
                 return;
             }
@@ -685,11 +790,11 @@ function generateTableHeaders(feature) {
     headerRow.appendChild(checkboxTh);
     
     // Add eye (visibility) column header
-    const eyeTh = document.createElement('th');
-    eyeTh.className = 'eye-col';
-    eyeTh.title = 'Toggle tile visibility on map';
-    eyeTh.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-    headerRow.appendChild(eyeTh);
+    // const eyeTh = document.createElement('th');
+    // eyeTh.className = 'eye-col';
+    // eyeTh.title = 'Toggle tile visibility on map';
+    // eyeTh.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    // headerRow.appendChild(eyeTh);
 
     // Add zoom column header
     const zoomTh = document.createElement('th');
@@ -794,6 +899,9 @@ function createRow(feature, fields) {
     const name = p.Name || '';
     tr.dataset.name = name;
 
+    // Restore checked state visually
+    if (selectedRows.has(name)) tr.classList.add('row-checked');
+
     // Add checkbox column
     const checkboxTd = document.createElement('td');
     checkboxTd.className = 'checkbox-col';
@@ -809,18 +917,18 @@ function createRow(feature, fields) {
     tr.appendChild(checkboxTd);
 
     // Add eye (visibility) toggle cell
-    const eyeTd = document.createElement('td');
-    eyeTd.className = 'eye-col';
-    const isHidden = hiddenSheets.has(name);
-    eyeTd.innerHTML = isHidden
-        ? '<svg class="eye-icon eye-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
-        : '<svg class="eye-icon eye-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-    if (isHidden) tr.classList.add('row-hidden-tile');
-    eyeTd.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleSheetVisibility(name, eyeTd, tr);
-    });
-    tr.appendChild(eyeTd);
+    // const eyeTd = document.createElement('td');
+    // eyeTd.className = 'eye-col';
+    // const isHidden = hiddenSheets.has(name);
+    // eyeTd.innerHTML = isHidden
+    //     ? '<svg class="eye-icon eye-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+    //     : '<svg class="eye-icon eye-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    // if (isHidden) tr.classList.add('row-hidden-tile');
+    // eyeTd.addEventListener('click', (e) => {
+    //     e.stopPropagation();
+    //     toggleSheetVisibility(name, eyeTd, tr);
+    // });
+    // tr.appendChild(eyeTd);
 
     // Add zoom-to-sheet cell
     const zoomTd = document.createElement('td');
@@ -898,8 +1006,19 @@ function createRow(feature, fields) {
     tr.addEventListener('click', (e) => {
         // Don't trigger if clicking checkbox
         if (e.target.type === 'checkbox') return;
+
+        // Ctrl+click (or Cmd+click on Mac) toggles checkbox selection
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const cb = tr.querySelector('.row-checkbox');
+            if (cb) {
+                cb.checked = !cb.checked;
+                handleRowCheckboxChange(name, cb.checked);
+            }
+            return;
+        }
         
-        // Fetch geometry on demand
+        // Normal click — highlight row and show imagery
         if (feature.geometry) {
             selectAndIsolate(name, feature);
         } else {
@@ -1071,8 +1190,8 @@ function applyTableFilter() {
         // Show all rows
         rows.forEach(row => row.style.display = '');
         
-        // Reset footprints filter to default -l4 only
-        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+        // Reset footprints filter to zoom-aware default
+        footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
         
         // Update count
         const visibleCount = rows.length;
@@ -1152,6 +1271,9 @@ extentFilterBtn.addEventListener('click', () => {
     const countSpan = document.getElementById('table-count');
     
     if (extentFilterEnabled) {
+        // Cancel any in-progress full load and switch to extent mode
+        isFetching = false;
+
         // Enable extent filtering - clear selection filter if active
         if (filteredBySelection) {
             filteredBySelection = false;
@@ -1164,34 +1286,20 @@ extentFilterBtn.addEventListener('click', () => {
         countSpan.textContent = '(Switching to extent-based view...)';
         loadVisibleFeatures();
     } else {
-        // Disable extent filtering - restore full map view
+        // Cancel any in-progress extent load and reload full dataset
+        isFetching = false;
+
         extentFilterBtn.classList.remove('active');
         extentFilterBtn.title = 'Filter table to the visible extent';
         
-        // Reset map filters - but respect active selection filter
-        if (filteredBySelection && selectedRows.size > 0) {
-            const names = Array.from(selectedRows);
-            const whereClause = names.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
-            const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
-            footprintsLayer.setLayerDefs({ 0: fullClause });
-        } else {
-            footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
-        }
+        // Reset map filters
+        footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
         geologyLayer.setMosaicRule({ mosaicMethod: 'esriMosaicClosestToCenter' });
-        
-        // Keep current records but update message
-        if (totalRecordsLoaded === 0) {
-            countSpan.textContent = '(Loading data...)';
-        } else {
-            const tbody = document.getElementById('table-body');
-            const rows = tbody.querySelectorAll('tr');
-            const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
-            countSpan.textContent = currentTableFilter 
-                ? `(${visibleRows.length} of ${rows.length} sheets match filter)`
-                : filteredBySelection
-                ? `(${selectedRows.size} sheets filtered)`
-                : `(${rows.length} sheets loaded)`;
-        }
+
+        // Reload all records
+        tableHeadersGenerated = false;
+        countSpan.textContent = '(Loading data...)';
+        loadAttributes();
     }
 });
 
@@ -1220,8 +1328,10 @@ function handleSelectAll(e) {
             checkbox.checked = isChecked;
             if (isChecked) {
                 selectedRows.add(name);
+                row.classList.add('row-checked');
             } else {
                 selectedRows.delete(name);
+                row.classList.remove('row-checked');
             }
         }
     });
@@ -1236,12 +1346,18 @@ function handleRowCheckboxChange(name, isChecked) {
         selectedRows.delete(name);
     }
 
+    // Toggle row-checked visual on the matching table row
+    const tbody = document.getElementById('table-body');
+    const matchingRow = Array.from(tbody.querySelectorAll('tr')).find(r => r.dataset.name === name);
+    if (matchingRow) {
+        matchingRow.classList.toggle('row-checked', isChecked);
+    }
+
     // Update imagery based on new selection state
     applySelectionMosaic();
 
     // Update select all checkbox state
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
-    const tbody = document.getElementById('table-body');
     const visibleRows = Array.from(tbody.querySelectorAll('tr')).filter(row => row.style.display !== 'none');
     const visibleChecked = visibleRows.filter(row => {
         const checkbox = row.querySelector('.row-checkbox');
@@ -1259,6 +1375,8 @@ function handleRowCheckboxChange(name, isChecked) {
 function updateMultiSelectUI() {
     const filterBtn = document.getElementById('filter-selected-btn');
     const clearFilterBtn = document.getElementById('clear-filter-selected-btn');
+    const countBtn = document.getElementById('selection-count-btn');
+    const countLabel = document.getElementById('selection-count-label');
     
     if (filterBtn) {
         filterBtn.disabled = selectedRows.size === 0;
@@ -1267,6 +1385,17 @@ function updateMultiSelectUI() {
     if (clearFilterBtn) {
         clearFilterBtn.style.display = filteredBySelection ? 'flex' : 'none';
     }
+
+    if (countBtn && countLabel) {
+        if (selectedRows.size > 0) {
+            countLabel.textContent = `${selectedRows.size} selected`;
+            countBtn.style.display = 'flex';
+        } else {
+            countBtn.style.display = 'none';
+        }
+    }
+
+    scheduleHighlightUpdate();
 }
 
 // --- Per-row tile visibility toggle ---
@@ -1288,13 +1417,13 @@ function refreshMosaicFromVisibility() {
         // No hidden sheets — restore based on current filter state
         if (filteredBySelection && selectedRows.size > 0) {
             const names = Array.from(selectedRows);
-            const whereClause = names.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
-            const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
+            const fpClause = Array.from(new Set(names.map(getBaseName).filter(Boolean)))
+                .map(b => `Name LIKE '${escapeSql(b)}%'`).join(' OR ');
             applyGeologyMosaic(buildGeologyWhereForSheetNames(names));
-            footprintsLayer.setLayerDefs({ 0: fullClause });
+            footprintsLayer.setLayerDefs({ 0: fpClause });
         } else {
             applyGeologyMosaic();
-            footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+            footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
         }
         return;
     }
@@ -1308,13 +1437,14 @@ function refreshMosaicFromVisibility() {
             applyGeologyMosaic('1=0');
             footprintsLayer.setLayerDefs({ 0: "1=0" });
         } else {
-            const whereClause = visibleNames.map(n => `Name = '${n.replace(/'/g, "''")}'`).join(' OR ');
-            const fullClause = `(${whereClause}) AND Name LIKE '%-l4'`;
+            const fpClause = Array.from(new Set(visibleNames.map(getBaseName).filter(Boolean)))
+                .map(b => `Name LIKE '${escapeSql(b)}%'`).join(' OR ');
             applyGeologyMosaic(buildGeologyWhereForSheetNames(visibleNames));
-            footprintsLayer.setLayerDefs({ 0: fullClause });
+            footprintsLayer.setLayerDefs({ 0: fpClause });
         }
     } else {
-        const fullClause = `(${hiddenClause}) AND Name LIKE '%-l4'`;
+        const defaultFilter = getDefaultFootprintsFilter();
+        const fullClause = `(${hiddenClause}) AND (${defaultFilter})`;
         const hiddenBaseClause = Array.from(new Set(Array.from(hiddenSheets).map(getBaseName).filter(Boolean)))
             .map(base => `Name NOT LIKE '${escapeSql(base)}-l%'`)
             .join(' AND ');
@@ -1382,7 +1512,11 @@ if (clearFilterSelectedBtn) {
         activeHighlightName = null;
         currentlySelectedFeature = null;
         currentlySelectedName = null;
-        rows.forEach(row => row.classList.remove('active-row'));
+        activeHighlightLayer.clearLayers();
+        rows.forEach(row => {
+            row.classList.remove('active-row');
+            row.classList.remove('row-checked');
+        });
 
         // Clear selections
         selectedRows.clear();
@@ -1405,7 +1539,7 @@ if (clearFilterSelectedBtn) {
         if (layerToggle) layerToggle.checked = false;
 
         // Reset footprints to show all sheets
-        footprintsLayer.setLayerDefs({ 0: "Name LIKE '%-l4'" });
+        footprintsLayer.setLayerDefs({ 0: getDefaultFootprintsFilter() });
         
         // Update count
         const countSpan = document.getElementById('table-count');
@@ -1415,6 +1549,43 @@ if (clearFilterSelectedBtn) {
         
         updateMultiSelectUI();
         showNotification('Filter cleared');
+    });
+}
+
+// Selection count badge × button — clears checkboxes without un-filtering the table
+const selectionCountClear = document.getElementById('selection-count-clear');
+if (selectionCountClear) {
+    selectionCountClear.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tbody = document.getElementById('table-body');
+        const rows = tbody.querySelectorAll('tr');
+
+        selectedRows.clear();
+        rows.forEach(row => {
+            row.classList.remove('row-checked');
+            const checkbox = row.querySelector('.row-checkbox');
+            if (checkbox) checkbox.checked = false;
+        });
+
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+
+        // If we were filtered by selection, also un-filter rows
+        if (filteredBySelection) {
+            filteredBySelection = false;
+            rows.forEach(row => { row.style.display = ''; });
+            const countSpan = document.getElementById('table-count');
+            if (countSpan) countSpan.textContent = `(${rows.length} sheets loaded)`;
+        }
+
+        highlightLayer.clearLayers();
+        activeHighlightLayer.clearLayers();
+        applySelectionMosaic();
+        updateMultiSelectUI();
+        showNotification('Selection cleared');
     });
 }
 

@@ -657,6 +657,37 @@ input[type=range] {
     flex-shrink: 0;
 }
 
+/* Selection count badge */
+.selection-count-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: #dbeafe;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #1d4ed8;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.selection-count-clear {
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    color: #3b82f6;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition: color 0.15s;
+}
+
+.selection-count-clear:hover {
+    color: #dc2626;
+}
+
 
 
 .table-content {
@@ -915,6 +946,14 @@ table.attr-table tr.active-row {
     background-color: #bfdbfe;
     border-left: 4px solid #2563eb;
     font-weight: 500;
+}
+
+table.attr-table tr.row-checked {
+    background-color: #fef9c3;
+}
+
+table.attr-table tr.row-checked.active-row {
+    background-color: #bfdbfe;
 }
 
 .load-more-btn {
